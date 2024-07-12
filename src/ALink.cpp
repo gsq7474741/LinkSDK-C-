@@ -29,6 +29,7 @@
 #include "aiot_dm_api.h"
 #include "aiot_mqtt_api.h"
 #include "aiot_ntp_api.h"
+#include "aiot_ota_api.h"
 #include "aiot_state_api.h"
 #include "aiot_sysdep_api.h"
 
@@ -44,6 +45,8 @@ static std::unordered_map<std::string, std::function<void(char *, uint32_t)>> sy
 static std::function<void(std::string, size_t)>                        property_set_cb;
 static std::function<void(int32_t, int32_t, std::string, std::string)> generic_reply_cb;
 static std::function<void(const aiot_ntp_recv_t *)>                    ntp_recv_cb;
+static std::function<void(uint8_t*,const uint32_t)>                    ota_download_buffer_write_cb;
+static std::function<void(void)>                    ota_download_down_cb;
 
 
 //static
@@ -75,6 +78,11 @@ static pthread_t g_mqtt_process_thread;
 static pthread_t g_mqtt_recv_thread;
 static uint8_t   g_mqtt_process_thread_running = 0;
 static uint8_t   g_mqtt_recv_thread_running    = 0;
+
+/* 位于external/ali_ca_cert.c中的服务器证书 */
+static void    *g_ota_handle    = nullptr;
+static void    *g_dl_handle     = nullptr;
+static uint32_t g_firmware_size = 0;
 
 /* TODO: 如果要关闭日志, 就把这个函数实现为空, 如果要减少日志, 可根据code选择不打印
  *
@@ -587,6 +595,153 @@ void demo_ntp_recv_handler(void *handle, const aiot_ntp_recv_t *packet, void *us
 	}
 }
 
+/* 下载收包回调, 用户调用 aiot_download_recv() 后, SDK收到数据会进入这个函数, 把下载到的数据交给用户 */
+/* TODO: 一般来说, 设备升级时, 会在这个回调中, 把下载到的数据写到Flash上 */
+void user_download_recv_handler(void *handle, const aiot_download_recv_t *packet, void *userdata)
+{
+	int32_t  percent         = 0;
+	int32_t  last_percent    = 0;
+	uint32_t data_buffer_len = 0;
+
+	/* 目前只支持 packet->type 为 AIOT_DLRECV_HTTPBODY 的情况 */
+	if (!packet || AIOT_DLRECV_HTTPBODY != packet->type) {
+		return;
+	}
+	percent = packet->data.percent;
+
+	/* 如果 percent 为负数, 说明发生了收包异常或者digest校验错误 */
+	if (percent < 0) {
+		/* digest校验错误 */
+		printf("exception happend, percent is %d\r\n", percent);
+		if (userdata) {
+			free(userdata);
+		}
+		return;
+	}
+
+	/* userdata可以存放 demo_download_recv_handler() 的不同次进入之间, 需要共享的数据 */
+	/* 这里用来存放上一次进入本回调函数时, 下载的固件进度百分比 */
+	if (userdata) {
+		last_percent = *((uint32_t *) (userdata));
+	}
+	data_buffer_len = packet->data.len;
+
+	/*
+     * TODO: 下载一段固件成功, 这个时候, 用户应该将
+     *       起始地址为 packet->data.buffer, 长度为 packet->data.len 的内存, 保存到flash上
+     *
+     *       如果烧写flash失败, 还应该调用 aiot_download_report_progress(handle, -4) 将失败上报给云平台
+     *       备注:协议中, 与云平台商定的错误码在 aiot_ota_protocol_errcode_t 类型中, 例如
+     *            -1: 表示升级失败
+     *            -2: 表示下载失败
+     *            -3: 表示校验失败
+     *            -4: 表示烧写失败
+     *
+     *       详情可见 https://help.aliyun.com/document_detail/85700.html
+     */
+
+	ota_download_buffer_write_cb(packet->data.buffer, packet->data.len);
+
+	/* percent 入参的值为 100 时, 说明SDK已经下载固件内容全部完成 */
+	if (percent == 100) {
+		/* 上报版本号 */
+		/*
+         * TODO: 这个时候, 一般用户就应该完成所有的固件烧录, 保存当前工作, 重启设备, 切换到新的固件上启动了
+         *       并且, 新的固件必须要以
+         *
+         *       aiot_ota_report_version(g_ota_handle, new_version);
+         *
+         *       这样的操作, 将升级后的新版本号(比如1.0.0升到1.1.0, 则new_version的值是"1.1.0")上报给云平台
+         *       云平台收到了新的版本号上报后, 才会判定升级成功, 否则会认为本次升级失败了
+         *
+         */
+		ota_download_down_cb();
+	}
+
+	/* 简化输出, 只有距离上次的下载进度增加5%以上时, 才会打印进度, 并向服务器上报进度 */
+	if (percent - last_percent >= 5 || percent == 100) {
+		printf("download %03d%% done, +%d bytes\r\n", percent, data_buffer_len);
+		aiot_download_report_progress(handle, percent);
+
+		if (userdata) {
+			*((uint32_t *) (userdata)) = percent;
+		}
+		if (percent == 100 && userdata) {
+			free(userdata);
+		}
+	}
+}
+
+
+/* 用户通过 aiot_ota_setopt() 注册的OTA消息处理回调, 如果SDK收到了OTA相关的MQTT消息, 会自动识别, 调用这个回调函数 */
+void user_ota_recv_handler(void *ota_handle, aiot_ota_recv_t *ota_msg, void *userdata)
+{
+	switch (ota_msg->type) {
+		case AIOT_OTARECV_FOTA: {
+			uint16_t                   port           = 443;
+			uint32_t                   max_buffer_len = 2048;
+			aiot_sysdep_network_cred_t cred;
+			void                      *dl_handle    = NULL;
+			void                      *last_percent = NULL;
+
+			if (NULL == ota_msg->task_desc || ota_msg->task_desc->protocol_type != AIOT_OTA_PROTOCOL_HTTPS) {
+				break;
+			}
+
+			dl_handle = aiot_download_init();
+			if (NULL == dl_handle) {
+				break;
+			}
+
+			last_percent = malloc(sizeof(uint32_t));
+			if (NULL == last_percent) {
+				aiot_download_deinit(&dl_handle);
+				break;
+			}
+			memset(last_percent, 0, sizeof(uint32_t));
+
+			printf("OTA target firmware version: %s, size: %u Bytes\r\n", ota_msg->task_desc->version, ota_msg->task_desc->size_total);
+
+			if (NULL != ota_msg->task_desc->extra_data) {
+				printf("extra data: %s\r\n", ota_msg->task_desc->extra_data);
+			}
+
+			g_firmware_size = ota_msg->task_desc->size_total;
+
+			memset(&cred, 0, sizeof(aiot_sysdep_network_cred_t));
+			cred.option               = AIOT_SYSDEP_NETWORK_CRED_SVRCERT_CA;
+			cred.max_tls_fragment     = 16384;
+			cred.x509_server_cert     = ali_ca_cert;
+			cred.x509_server_cert_len = strlen(ali_ca_cert);
+			uint32_t end              = g_firmware_size / 2;
+			/* 设置下载时为TLS下载 */
+			if ((STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_NETWORK_CRED, (void *) (&cred)))
+				/* 设置下载时访问的服务器端口号 */
+				|| (STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_NETWORK_PORT, (void *) (&port)))
+				/* 设置下载的任务信息, 通过输入参数 ota_msg 中的 task_desc 成员得到, 内含下载地址, 固件大小, 固件签名等 */
+				|| (STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_TASK_DESC, (void *) (ota_msg->task_desc)))
+				/* 设置下载内容到达时, SDK将调用的回调函数 */
+				|| (STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_RECV_HANDLER, (void *) (user_download_recv_handler)))
+				/* 设置单次下载最大的buffer长度, 每当这个长度的内存读满了后会通知用户 */
+				|| (STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_BODY_BUFFER_MAX_LEN, (void *) (&max_buffer_len)))
+				/* 设置 AIOT_DLOPT_RECV_HANDLER 的不同次调用之间共享的数据, 比如例程把进度存在这里 */
+				|| (STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_USERDATA, (void *) last_percent))
+				/* 指明下载方式是按照range下载, 并且当前只下载一半 */
+				|| (STATE_SUCCESS != aiot_download_setopt(dl_handle, AIOT_DLOPT_RANGE_END, (void *) &end))
+				/* 发送http的GET请求给http服务器 */
+				|| (STATE_SUCCESS != aiot_download_send_request(dl_handle))) {
+				aiot_download_deinit(&dl_handle);
+				free(last_percent);
+				break;
+			}
+			g_dl_handle = dl_handle;
+			break;
+		}
+		default:
+			break;
+	}
+}
+
 
 class Alink {
    private:
@@ -597,6 +752,9 @@ class Alink {
 	static uint8_t                    post_reply;
 	static int8_t                     time_zone;
 	static void                      *ntp_handle;
+	static std::string                cur_version;
+	static void                      *ota_handle;
+//	static uint32_t                   timeout_ms = 0;
 
 
    public:
@@ -753,10 +911,54 @@ class Alink {
 		res = aiot_ntp_send_request(ntp_handle);
 		if (res < STATE_SUCCESS) {
 			aiot_ntp_deinit(&ntp_handle);
-//			demo_mqtt_stop(&mqtt_handle);
+			//			demo_mqtt_stop(&mqtt_handle);
 			return -1;
 		}
 		return 0;
+	}
+
+	static int32_t beginOTA(const std::string &_cur_version)
+	{
+		/* 与MQTT例程不同的是, 这里需要增加创建OTA会话实例的语句 */
+		ota_handle = aiot_ota_init();
+		if (NULL == ota_handle) {
+			return -1;
+		}
+
+		/* 用以下语句, 把OTA会话和MQTT会话关联起来 */
+		aiot_ota_setopt(ota_handle, AIOT_OTAOPT_MQTT_HANDLE, mqtt_handle);
+		/* 用以下语句, 设置OTA会话的数据接收回调, SDK收到OTA相关推送时, 会进入这个回调函数 */
+		aiot_ota_setopt(ota_handle, AIOT_OTAOPT_RECV_HANDLER, (void *) (user_ota_recv_handler));
+		g_ota_handle = ota_handle;
+
+
+		/*   TODO: 非常重要!!!
+     *
+     *   cur_version 要根据用户实际情况, 改成从设备的配置区获取, 要反映真实的版本号, 而不能像示例这样写为固定值
+     *
+     *   1. 如果设备从未上报过版本号, 在控制台网页将无法部署升级任务
+     *   2. 如果设备升级完成后, 上报的不是新的版本号, 在控制台网页将会显示升级失败
+     *
+     */
+
+		cur_version = _cur_version;
+		/* 演示MQTT连接建立起来之后, 就可以上报当前设备的版本号了 */
+		res = aiot_ota_report_version(ota_handle, cur_version.data());
+		if (res < STATE_SUCCESS) {
+			printf("report version failed, code is -0x%04X\r\n", -res);
+			return -1;
+		}
+		return 0;
+	}
+
+	static void register_download_buffer_write_cb(std::function<void(const void *, size_t)> _cb)
+	{
+		ota_download_buffer_write_cb = std::move(_cb);
+	}
+
+	static void register_download_down_cb(std::function<void()> _cb)
+	{
+		ota_download_down_cb = std::move(_cb);
 	}
 
 	static int32_t end()
