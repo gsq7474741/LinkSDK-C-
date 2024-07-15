@@ -20,7 +20,7 @@
 #include "aiot_compress_api.h"
 
 /* TODO: 替换为自己设备的三元组 */
-const char *product_key       = "${YourProductKey}";
+const char *constproduct_key       = "${YourProductKey}";
 const char *device_name       = "${YourDeviceName}";
 const char *device_secret     = "${YourDeviceSecret}";
 

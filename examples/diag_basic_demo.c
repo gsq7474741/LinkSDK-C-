@@ -17,7 +17,7 @@
 
 
 /* TODO: 替换为自己设备的三元组 */
-char *product_key       = "${YourProductKey}";
+const char *constproduct_key       = "${YourProductKey}";
 char *device_name       = "${YourDeviceName}";
 char *device_secret     = "${YourDeviceSecret}";
 

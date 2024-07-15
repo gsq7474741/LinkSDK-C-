@@ -150,13 +150,13 @@ static void _core_mbedtls_free(void *ptr)
     g_origin_portfile->core_sysdep_free(mem_info);
 }
 
-static int32_t _core_mbedtls_random(void *handle, uint8_t *output, size_t output_len)
+static int _core_mbedtls_random(void *handle, unsigned char *output, size_t output_len)
 {
     g_origin_portfile->core_sysdep_rand(output, output_len);
     return 0;
 }
 
-static void _core_mbedtls_debug(void *ctx, int32_t level, const char *file, int32_t line, const char *str)
+static void _core_mbedtls_debug(void *ctx, int level, const char *file, int line, const char *str)
 {
     ((void) level);
     if (NULL != ctx) {
@@ -165,14 +165,14 @@ static void _core_mbedtls_debug(void *ctx, int32_t level, const char *file, int3
 }
 
 
-static int32_t _core_mbedtls_net_send(void *ctx, const uint8_t *buf, size_t len)
+static int _core_mbedtls_net_send(void *ctx, const unsigned char *buf, size_t len)
 {
     int32_t ret = g_origin_portfile->core_sysdep_network_send(ctx, (uint8_t *)buf, len, 5000, NULL);
     /*core_log2(g_origin_portfile, STATE_ADAPTER_COMMON, "_core_mbedtls_net_send %d, ret %d\r\n", &len, &ret);*/
     return ret;
 }
 
-static int32_t _core_mbedtls_net_recv(void *ctx, uint8_t *buf, size_t len)
+static int _core_mbedtls_net_recv(void *ctx, unsigned char *buf, size_t len)
 {
     int32_t ret = g_origin_portfile->core_sysdep_network_recv(ctx, buf, len, 5000, NULL);
     if (ret < 0) {
@@ -181,7 +181,7 @@ static int32_t _core_mbedtls_net_recv(void *ctx, uint8_t *buf, size_t len)
         return ret;
     }
 }
-static int32_t _core_mbedtls_net_recv_timeout(void *ctx, uint8_t *buf, size_t len,
+static int _core_mbedtls_net_recv_timeout(void *ctx, unsigned char *buf, size_t len,
         uint32_t timeout)
 {
     int32_t ret = g_origin_portfile->core_sysdep_network_recv(ctx, buf, len, timeout, NULL);
@@ -510,7 +510,7 @@ void *adapter_network_init(void)
 #ifdef CORE_ADAPTER_MBEDTLS_ENABLED
     adapter_handle->psk.psk_id = NULL;
     adapter_handle->psk.psk = NULL;
-    mbedtls_debug_set_threshold(0);
+//    mbedtls_debug_set_threshold(0);
     mbedtls_ssl_init(&adapter_handle->mbedtls.ssl_ctx);
     mbedtls_ssl_config_init(&adapter_handle->mbedtls.ssl_config);
     mbedtls_platform_set_calloc_free(_core_mbedtls_calloc, _core_mbedtls_free);
