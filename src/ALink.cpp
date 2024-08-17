@@ -3,6 +3,7 @@
 //
 
 #include "ALink.h"
+#include "csdk/dm_private.h"
 
 //#include <utility>
 
@@ -96,8 +97,11 @@ static uint32_t g_firmware_size = 0;
 int32_t demo_state_logcb(int32_t code, char *message)
 {
 	/* 下载固件的时候会有大量的HTTP收包日志, 通过code筛选出来关闭 */
-	if (code != STATE_HTTP_LOG_RECV_CONTENT) {
-//		printf("%s", message);
+	if (code != STATE_HTTP_LOG_RECV_CONTENT
+//		&& code!= STATE_MQTT_LOG_HEXDUMP
+
+		) {
+		//		printf("%s", message);
 		Serial.printf("%s", message);
 	}
 	return 0;
@@ -442,159 +446,6 @@ int32_t demo_send_delete_desred_requset(void *dm_handle)
 }
 
 
-//int main(int argc, char *argv[])
-//{
-//	int32_t                    res         = STATE_SUCCESS;
-//	void                      *dm_handle   = NULL;
-//	void                      *mqtt_handle = NULL;
-//	aiot_sysdep_network_cred_t cred; /* 安全凭据结构体, 如果要用TLS, 这个结构体中配置CA证书等参数 */
-//	uint8_t                    post_reply = 1;
-//
-//
-//	/* 配置SDK的底层依赖 */
-//	aiot_sysdep_set_portfile(&g_aiot_sysdep_portfile);
-//	/* 配置SDK的日志输出 */
-//	aiot_state_set_logcb(demo_state_logcb);
-//
-//	/* 创建SDK的安全凭据, 用于建立TLS连接 */
-//	memset(&cred, 0, sizeof(aiot_sysdep_network_cred_t));
-//	cred.option               = AIOT_SYSDEP_NETWORK_CRED_SVRCERT_CA; /* 使用RSA证书校验MQTT服务端 */
-//	cred.max_tls_fragment     = 16384;               /* 最大的分片长度为16K, 其它可选值还有4K, 2K, 1K, 0.5K */
-//	cred.sni_enabled          = 1;                   /* TLS建连时, 支持Server Name Indicator */
-//	cred.x509_server_cert     = ali_ca_cert;         /* 用来验证MQTT服务端的RSA根证书 */
-//	cred.x509_server_cert_len = strlen(ali_ca_cert); /* 用来验证MQTT服务端的RSA根证书长度 */
-//
-//	/* 创建1个MQTT客户端实例并内部初始化默认参数 */
-//	mqtt_handle = aiot_mqtt_init();
-//	if (mqtt_handle == NULL) {
-//		printf("aiot_mqtt_init failed\n");
-//		return -1;
-//	}
-//
-//	/* 配置MQTT服务器地址 */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_HOST, (void *) mqtt_host);
-//	/* 配置MQTT服务器端口 */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_PORT, (void *) &port);
-//	/* 配置设备productKey */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_PRODUCT_KEY, (void *) product_key);
-//	/* 配置设备deviceName */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_DEVICE_NAME, (void *) device_name);
-//	/* 配置设备deviceSecret */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_DEVICE_SECRET, (void *) device_secret);
-//	/* 配置网络连接的安全凭据, 上面已经创建好了 */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_NETWORK_CRED, (void *) &cred);
-//	/* 配置MQTT事件回调函数 */
-//	aiot_mqtt_setopt(mqtt_handle, AIOT_MQTTOPT_EVENT_HANDLER, (void *) demo_mqtt_event_handler);
-//
-//	/* 创建DATA-MODEL实例 */
-//	dm_handle = aiot_dm_init();
-//	if (dm_handle == NULL) {
-//		printf("aiot_dm_init failed");
-//		return -1;
-//	}
-//	/* 配置MQTT实例句柄 */
-//	aiot_dm_setopt(dm_handle, AIOT_DMOPT_MQTT_HANDLE, mqtt_handle);
-//	/* 配置消息接收处理回调函数 */
-//	aiot_dm_setopt(dm_handle, AIOT_DMOPT_RECV_HANDLER, (void *) demo_dm_recv_handler);
-//
-//	/* 配置是云端否需要回复post_reply给设备. 如果为1, 表示需要云端回复, 否则表示不回复 */
-//	aiot_dm_setopt(dm_handle, AIOT_DMOPT_POST_REPLY, (void *) &post_reply);
-//
-//	/* 与服务器建立MQTT连接 */
-//	res = aiot_mqtt_connect(mqtt_handle);
-//	if (res < STATE_SUCCESS) {
-//		/* 尝试建立连接失败, 销毁MQTT实例, 回收资源 */
-//		aiot_dm_deinit(&dm_handle);
-//		aiot_mqtt_deinit(&mqtt_handle);
-//		printf("aiot_mqtt_connect failed: -0x%04X\n\r\n", -res);
-//		printf("please check variables like mqtt_host, produt_key, device_name, device_secret in demo\r\n");
-//		return -1;
-//	}
-//
-//	/* 向服务器订阅property/batch/post_reply这个topic */
-//	aiot_mqtt_sub(mqtt_handle, "/sys/${YourProductKey}/${YourDeviceName}/thing/event/property/batch/post_reply", NULL, 1, NULL);
-//
-//	/* 创建一个单独的线程, 专用于执行aiot_mqtt_process, 它会自动发送心跳保活, 以及重发QoS1的未应答报文 */
-//	g_mqtt_process_thread_running = 1;
-//	res                           = pthread_create(&g_mqtt_process_thread, NULL, demo_mqtt_process_thread, mqtt_handle);
-//	if (res < 0) {
-//		printf("pthread_create demo_mqtt_process_thread failed: %d\n", res);
-//		aiot_dm_deinit(&dm_handle);
-//		aiot_mqtt_deinit(&mqtt_handle);
-//		return -1;
-//	}
-//
-//	/* 创建一个单独的线程用于执行aiot_mqtt_recv, 它会循环收取服务器下发的MQTT消息, 并在断线时自动重连 */
-//	g_mqtt_recv_thread_running = 1;
-//	res                        = pthread_create(&g_mqtt_recv_thread, NULL, demo_mqtt_recv_thread, mqtt_handle);
-//	if (res < 0) {
-//		printf("pthread_create demo_mqtt_recv_thread failed: %d\n", res);
-//		aiot_dm_deinit(&dm_handle);
-//		aiot_mqtt_deinit(&mqtt_handle);
-//		return -1;
-//	}
-//
-//	/* 主循环进入休眠 */
-//	while (1) {
-//		/* TODO: 以下代码演示了简单的属性上报和事件上报, 用户可取消注释观察演示效果 */
-//		demo_send_property_post(dm_handle, "{\"LightSwitch\": 0}");
-//		/*
-//        demo_send_event_post(dm_handle, "Error", "{\"ErrorCode\": 0}");
-//        */
-//
-//		/* TODO: 以下代码演示了基于模块的物模型的上报, 用户可取消注释观察演示效果
-//         * 本例需要用户在产品的功能定义的页面中, 点击"编辑草稿", 增加一个名为demo_extra_block的模块,
-//         * 再到该模块中, 通过添加标准功能, 选择一个名为NightLightSwitch的物模型属性, 再点击"发布上线".
-//         * 有关模块化的物模型的概念, 请见 https://help.aliyun.com/document_detail/73727.html
-//        */
-//		/*
-//        demo_send_property_post(dm_handle, "{\"demo_extra_block:NightLightSwitch\": 1}");
-//        */
-//
-//		/* TODO: 以下代码显示批量上报用户数据, 用户可取消注释观察演示效果
-//         * 具体数据格式请见https://help.aliyun.com/document_detail/89301.html 的"设备批量上报属性、事件"一节
-//        */
-//		/*
-//        demo_send_property_batch_post(dm_handle,
-//                                      "{\"properties\":{\"Power\": [ {\"value\":\"on\",\"time\":1612684518}],\"WF\": [{\"value\": 3,\"time\":1612684518}]}}");
-//        */
-//
-//		sleep(5);
-//	}
-//
-//	/* 停止收发动作 */
-//	g_mqtt_process_thread_running = 0;
-//	g_mqtt_recv_thread_running    = 0;
-//
-//	/* 断开MQTT连接, 一般不会运行到这里 */
-//	res = aiot_mqtt_disconnect(mqtt_handle);
-//	if (res < STATE_SUCCESS) {
-//		aiot_dm_deinit(&dm_handle);
-//		aiot_mqtt_deinit(&mqtt_handle);
-//		printf("aiot_mqtt_disconnect failed: -0x%04X\n", -res);
-//		return -1;
-//	}
-//
-//	/* 销毁DATA-MODEL实例, 一般不会运行到这里 */
-//	res = aiot_dm_deinit(&dm_handle);
-//	if (res < STATE_SUCCESS) {
-//		printf("aiot_dm_deinit failed: -0x%04X\n", -res);
-//		return -1;
-//	}
-//
-//	/* 销毁MQTT实例, 一般不会运行到这里 */
-//	res = aiot_mqtt_deinit(&mqtt_handle);
-//	if (res < STATE_SUCCESS) {
-//		printf("aiot_mqtt_deinit failed: -0x%04X\n", -res);
-//		return -1;
-//	}
-//
-//	pthread_join(g_mqtt_process_thread, NULL);
-//	pthread_join(g_mqtt_recv_thread, NULL);
-//
-//	return 0;
-//}
-
 /* 事件处理回调,  */
 void demo_ntp_event_handler(void *handle, const aiot_ntp_event_t *event, void *userdata)
 {
@@ -616,15 +467,15 @@ void demo_ntp_recv_handler(void *handle, const aiot_ntp_recv_t *packet, void *us
 	switch (packet->type) {
 		/* TODO: 结构体 aiot_ntp_recv_t{} 中包含当前时区下, 年月日时分秒的数值, 可在这里把它们解析储存起来 */
 		case AIOT_NTPRECV_LOCAL_TIME: {
-			printf("local time: %llu, %02lu/%02lu/%02lu-%02lu:%02lu:%02lu:%lu\n",
-				   (long long unsigned int) packet->data.local_time.timestamp,
-				   packet->data.local_time.year,
-				   packet->data.local_time.mon,
-				   packet->data.local_time.day,
-				   packet->data.local_time.hour,
-				   packet->data.local_time.min,
-				   packet->data.local_time.sec,
-				   packet->data.local_time.msec);
+			//			printf("local time: %llu, %02lu/%02lu/%02lu-%02lu:%02lu:%02lu:%lu\n",
+			//				   (long long unsigned int) packet->data.local_time.timestamp,
+			//				   packet->data.local_time.year,
+			//				   packet->data.local_time.mon,
+			//				   packet->data.local_time.day,
+			//				   packet->data.local_time.hour,
+			//				   packet->data.local_time.min,
+			//				   packet->data.local_time.sec,
+			//				   packet->data.local_time.msec);
 
 			ntp_recv_cb(packet);
 		} break;
@@ -880,11 +731,12 @@ int32_t ALink::begin(const char *_productKey, const char *_deviceName, const cha
 
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
-	log_i("default stacksize: %d", attr.stacksize);
+	attr.stacksize = 1024 * 16;
+	DEBUG_PRINT_LINE("default stacksize: %d", attr.stacksize);
 
 	/* 创建一个单独的线程, 专用于执行aiot_mqtt_process, 它会自动发送心跳保活, 以及重发QoS1的未应答报文 */
 	g_mqtt_process_thread_running = 1;
-	res                           = pthread_create(&g_mqtt_process_thread, NULL, demo_mqtt_process_thread, mqtt_handle);
+	res                           = pthread_create(&g_mqtt_process_thread, &attr, demo_mqtt_process_thread, mqtt_handle);
 	if (res < 0) {
 		printf("pthread_create demo_mqtt_process_thread failed: %d\n", res);
 		aiot_dm_deinit(&dm_handle);
@@ -894,7 +746,7 @@ int32_t ALink::begin(const char *_productKey, const char *_deviceName, const cha
 
 	/* 创建一个单独的线程用于执行aiot_mqtt_recv, 它会循环收取服务器下发的MQTT消息, 并在断线时自动重连 */
 	g_mqtt_recv_thread_running = 1;
-	res                        = pthread_create(&g_mqtt_recv_thread, NULL, demo_mqtt_recv_thread, mqtt_handle);
+	res                        = pthread_create(&g_mqtt_recv_thread, &attr, demo_mqtt_recv_thread, mqtt_handle);
 	if (res < 0) {
 		printf("pthread_create demo_mqtt_recv_thread failed: %d\n", res);
 		aiot_dm_deinit(&dm_handle);
@@ -1071,7 +923,7 @@ template<typename T>
 int32_t ALink::sendPropertyPost(std::string property, T value)
 {
 	std::string params_tmp;
-	params_tmp += "{{\"";
+	params_tmp += "{\"";
 	params_tmp += property;
 	params_tmp += "\":";
 	if constexpr (std::is_arithmetic_v<T>) {
@@ -1082,17 +934,17 @@ int32_t ALink::sendPropertyPost(std::string property, T value)
 		params_tmp += "\"" + value + "\"";
 	} else {
 		// 对于其他类型，这里可以添加特定的转换逻辑或抛出异常
-//		static_assert(false, "Unsupported type for ALink::sendPropertyPost");
-		params_tmp += "\"" + std::string {"Unsupported type"} + typeid(T).name()+ "\"";
+		//		static_assert(false, "Unsupported type for ALink::sendPropertyPost");
+		params_tmp += "\"" + std::string{"Unsupported type"} + typeid(T).name() + "\"";
 	}
-	params_tmp += "}}";
+	params_tmp += "}";
 	//	return demo_send_property_post(dm_handle, std::format("{{\"{}\": {}}}", property, value).data());
 	return demo_send_property_post(dm_handle, params_tmp.data());
 }
 
 
 template<typename T>
-int32_t ALink::sendPropertyBatchPost(const std::list<std::tuple<std::string, std::list<std::tuple<T, time_t>>>> properties)
+int32_t ALink::sendPropertyBatchPost(const std::list<std::tuple<std::string, std::list<std::tuple<T, uint64_t>>>> properties)
 {
 	std::string property_batch_data = "{\"properties\":{";
 	for (auto property: properties) {
@@ -1100,13 +952,15 @@ int32_t ALink::sendPropertyBatchPost(const std::list<std::tuple<std::string, std
 		//		property_batch_data += std::format("\"{}\": [", std::get<0>(property));
 		property_batch_data += "\"";
 		property_batch_data += std::get<0>(property);
-		property_batch_data += "{}\": [";
+		property_batch_data += "\": [";
 		for (const auto &datum: std::get<1>(property)) {
 			//			property_batch_data += std::format("{\"value\": {}, \"time\": {}},", std::get<0>(datum), std::get<1>(datum));
 			property_batch_data += "{\"value\": ";
 			property_batch_data += std::get<0>(datum);
 			property_batch_data += ", \"time\": ";
-			property_batch_data += std::get<1>(datum);
+			char time_str[21] = {0};
+			core_uint642str(std::get<1>(datum), time_str, NULL);
+			property_batch_data += time_str;
 			property_batch_data += "},";
 		}
 		if (!property_batch_data.empty()) {
@@ -1121,20 +975,21 @@ int32_t ALink::sendPropertyBatchPost(const std::list<std::tuple<std::string, std
 	return demo_send_property_batch_post(ALink::dm_handle, property_batch_data.data());
 }
 
-#define TEMPLATE_INSTANTIATE(T) \
-	template int32_t ALink::sendPropertyPost(std::string property, T value); \
-	template int32_t ALink::sendPropertyBatchPost(const std::list<std::tuple<std::string, std::list<std::tuple<T, time_t>>>> properties); \
+#define TEMPLATE_INSTANTIATE(T)                                                                       \
+	template int32_t ALink::sendPropertyPost(std::string property, T value);                          \
+	template int32_t ALink::sendPropertyBatchPost(                                                    \
+			const std::list<std::tuple<std::string, std::list<std::tuple<T, uint64_t>>>> properties); \
 	template int32_t ALink::sendEventPost(std::string event, const std::list<std::tuple<std::string, T>> params);
 
 #define TEMPLATE_INSTANTIATE_ALL_TYPES() \
-	TEMPLATE_INSTANTIATE(std::string) \
-	TEMPLATE_INSTANTIATE(float) \
-	TEMPLATE_INSTANTIATE(double) \
-	TEMPLATE_INSTANTIATE(int32_t ) \
-	TEMPLATE_INSTANTIATE(int64_t) \
+	TEMPLATE_INSTANTIATE(std::string)    \
+	TEMPLATE_INSTANTIATE(float)          \
+	TEMPLATE_INSTANTIATE(double)         \
+	TEMPLATE_INSTANTIATE(int32_t)        \
+	TEMPLATE_INSTANTIATE(int64_t)        \
 	TEMPLATE_INSTANTIATE(bool)
 
-TEMPLATE_INSTANTIATE_ALL_TYPES();
+TEMPLATE_INSTANTIATE_ALL_TYPES()
 
 //template int32_t ALink::sendPropertyBatchPost(
 //		std::list<std::tuple<std::string, std::list<std::tuple<std::string , time_t>>>> properties);
