@@ -654,7 +654,6 @@ int32_t ALink::begin(const char *_productKey, const char *_deviceName, const cha
 	device_name   = _deviceName;
 	device_secret = _deviceSecret;
 	instance_id   = _instanceID;
-	//	mqtt_host     = std::format("{}.mqtt.iothub.aliyuncs.com", instance_id).data();
 	sprintf(mqtt_host, "%s.mqtt.iothub.aliyuncs.com", instance_id);
 
 	res         = STATE_SUCCESS;

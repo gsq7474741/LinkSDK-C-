@@ -480,9 +480,9 @@ int main(int argc, char *argv[])
          * 再到该模块中, 通过添加标准功能, 选择一个名为NightLightSwitch的物模型属性, 再点击"发布上线".
          * 有关模块化的物模型的概念, 请见 https://help.aliyun.com/document_detail/73727.html
         */
-        /*
+//        /*
         demo_send_property_post(dm_handle, "{\"demo_extra_block:NightLightSwitch\": 1}");
-        */
+//        */
 
         /* TODO: 以下代码显示批量上报用户数据, 用户可取消注释观察演示效果
          * 具体数据格式请见https://help.aliyun.com/document_detail/89301.html 的"设备批量上报属性、事件"一节
