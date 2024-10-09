@@ -98,9 +98,9 @@ int32_t demo_state_logcb(int32_t code, char *message)
 {
 	/* 下载固件的时候会有大量的HTTP收包日志, 通过code筛选出来关闭 */
 	if (code != STATE_HTTP_LOG_RECV_CONTENT
-//		&& code!= STATE_MQTT_LOG_HEXDUMP
+		//		&& code!= STATE_MQTT_LOG_HEXDUMP
 
-		) {
+	) {
 		//		printf("%s", message);
 		Serial.printf("%s", message);
 	}
@@ -116,12 +116,12 @@ void demo_mqtt_event_handler(void *handle, const aiot_mqtt_event_t *event, void 
 			printf("AIOT_MQTTEVT_CONNECT\n");
 		} break;
 
-		/* SDK因为网络状况被动断连后, 自动发起重连已成功 */
+			/* SDK因为网络状况被动断连后, 自动发起重连已成功 */
 		case AIOT_MQTTEVT_RECONNECT: {
 			printf("AIOT_MQTTEVT_RECONNECT\n");
 		} break;
 
-		/* SDK因为网络的状况而被动断开了连接, network是底层读写失败, heartbeat是没有按预期得到服务端心跳应答 */
+			/* SDK因为网络的状况而被动断开了连接, network是底层读写失败, heartbeat是没有按预期得到服务端心跳应答 */
 		case AIOT_MQTTEVT_DISCONNECT: {
 			const char *cause =
 					(event->data.disconnect == AIOT_MQTTDISCONNEVT_NETWORK_DISCONNECT) ? ("network disconnect") : ("heartbeat disconnect");
@@ -223,7 +223,7 @@ static void demo_dm_recv_async_service_invoke(void *dm_handle, const aiot_dm_rec
 	/* TODO: 以下代码演示如何对来自云平台的异步服务调用进行应答, 用户可取消注释查看演示效果
         *
         * 注意: 如果用户在回调函数外进行应答, 需要自行保存msg_id, 因为回调函数入参在退出回调函数后将被SDK销毁, 不可以再访问到
-	*/
+    */
 
 	auto payload                                        = recv->data.async_service_invoke.params;
 	payload[recv->data.async_service_invoke.params_len] = '\0';
@@ -350,32 +350,32 @@ static void demo_dm_recv_handler(void *dm_handle, const aiot_dm_recv_t *recv, vo
 			demo_dm_recv_generic_reply(dm_handle, recv, userdata);
 		} break;
 
-		/* 属性设置 */
+			/* 属性设置 */
 		case AIOT_DMRECV_PROPERTY_SET: {
 			demo_dm_recv_property_set(dm_handle, recv, userdata);
 		} break;
 
-		/* 异步服务调用 */
+			/* 异步服务调用 */
 		case AIOT_DMRECV_ASYNC_SERVICE_INVOKE: {
 			demo_dm_recv_async_service_invoke(dm_handle, recv, userdata);
 		} break;
 
-		/* 同步服务调用 */
+			/* 同步服务调用 */
 		case AIOT_DMRECV_SYNC_SERVICE_INVOKE: {
 			demo_dm_recv_sync_service_invoke(dm_handle, recv, userdata);
 		} break;
 
-		/* 下行二进制数据 */
+			/* 下行二进制数据 */
 		case AIOT_DMRECV_RAW_DATA: {
 			demo_dm_recv_raw_data(dm_handle, recv, userdata);
 		} break;
 
-		/* 二进制格式的同步服务调用, 比单纯的二进制数据消息多了个rrpc_id */
+			/* 二进制格式的同步服务调用, 比单纯的二进制数据消息多了个rrpc_id */
 		case AIOT_DMRECV_RAW_SYNC_SERVICE_INVOKE: {
 			demo_dm_recv_raw_sync_service_invoke(dm_handle, recv, userdata);
 		} break;
 
-		/* 上行二进制数据后, 云端的回复报文 */
+			/* 上行二进制数据后, 云端的回复报文 */
 		case AIOT_DMRECV_RAW_DATA_REPLY: {
 			demo_dm_recv_raw_data_reply(dm_handle, recv, userdata);
 		} break;
@@ -669,10 +669,10 @@ int32_t ALink::begin(const char *_productKey, const char *_deviceName, const cha
 	/* 创建SDK的安全凭据, 用于建立TLS连接 */
 	memset(&cred, 0, sizeof(aiot_sysdep_network_cred_t));
 	cred.option               = AIOT_SYSDEP_NETWORK_CRED_SVRCERT_CA; /* 使用RSA证书校验MQTT服务端 */
-	cred.max_tls_fragment     = 16384;               /* 最大的分片长度为16K, 其它可选值还有4K, 2K, 1K, 0.5K */
-	cred.sni_enabled          = 1;                   /* TLS建连时, 支持Server Name Indicator */
-	cred.x509_server_cert     = ali_ca_cert;         /* 用来验证MQTT服务端的RSA根证书 */
-	cred.x509_server_cert_len = strlen(ali_ca_cert); /* 用来验证MQTT服务端的RSA根证书长度 */
+	cred.max_tls_fragment     = 16384;                               /* 最大的分片长度为16K, 其它可选值还有4K, 2K, 1K, 0.5K */
+	cred.sni_enabled          = 1;                                   /* TLS建连时, 支持Server Name Indicator */
+	cred.x509_server_cert     = ali_ca_cert;                         /* 用来验证MQTT服务端的RSA根证书 */
+	cred.x509_server_cert_len = strlen(ali_ca_cert);                 /* 用来验证MQTT服务端的RSA根证书长度 */
 
 	/* 创建1个MQTT客户端实例并内部初始化默认参数 */
 	mqtt_handle = aiot_mqtt_init();
@@ -971,6 +971,20 @@ int32_t ALink::sendPropertyBatchPost(const std::list<std::tuple<std::string, std
 		property_batch_data.pop_back();// 删除最后一个字符
 	}
 	property_batch_data += "}}";
+	return demo_send_property_batch_post(ALink::dm_handle, property_batch_data.data());
+}
+
+//template<typename T>
+int32_t ALink::sendPropertyBatchPost(JsonVariant p)
+{
+	std::string property_batch_data = "{\"properties\":";
+
+
+	std::string jsonBuf;
+	serializeJson(p, jsonBuf);
+	property_batch_data += jsonBuf;
+
+	property_batch_data += "}";
 	return demo_send_property_batch_post(ALink::dm_handle, property_batch_data.data());
 }
 

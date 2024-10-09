@@ -66,6 +66,8 @@ class ALink {
 	template<typename T>
 	static int32_t sendPropertyBatchPost(std::list<std::tuple<std::string, std::list<std::tuple<T, uint64_t>>>> properties);
 
+    static int32_t sendPropertyBatchPost(JsonVariant obj);
+
 	template<typename T>
 	static int32_t sendEventPost(std::string event, const std::list<std::tuple<std::string, T>> params);
 
